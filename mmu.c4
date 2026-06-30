@@ -1,0 +1,412 @@
+use std::vector as vector
+use std::result as result
+use std::utils  as utils
+use std::libc::memory as memory
+
+foreign "C"{
+    fn printf(str fmt,...)->i32
+    fn exit(i32 status)
+    fn malloc(u64 size)->void *
+}
+
+// A software MMU with byte-level permissions and uninitialized memory access detection
+
+const u64 DIRTY_BLOCK_SIZE = 4096
+
+// Memory Permission
+enum Permission{
+    Read  = 1 << 0  // Read Permission
+    Write = 1 << 1  // Write Permission
+    Exec  = 1 << 2  // Execute Permission
+    Raw   = 1 << 3  // Read After Write Permission
+}
+
+type VirtualAddress = u64
+
+// Memory Management Unit for our emulator
+
+struct MMU{
+    // Block of memory for this address space
+    vector::Vector<u8> memory
+
+    // Byte Permission for byte in memory
+    vector::Vector<Permission> permissions
+
+    // size of memory
+    u64 size
+
+    // This is a high-performance optimization pattern
+    
+    // Serves as a quick,sequential list of modified addresses so that the emulator
+    // can easily iterate over and clear/flush only the modified regions later,
+    // without scanning the entire bitmap
+    vector::Vector<u64> dirty
+
+    // Allows the emulator to check if a block is already marked in O(1) constant time
+    // using fast bitwise cpu operations
+    vector::Vector<u64> dirtyBitMap
+
+    // Next Allocation Base Address
+    VirtualAddress nextBaseAddress
+}
+
+
+impl MMU{
+    fn Init(u64 size){
+        self->memory.InitSized(size)
+        self->permissions.InitSized(size)
+
+        self->dirty.InitSized(size / DIRTY_BLOCK_SIZE + 1)
+        self->dirtyBitMap.InitSized(size / DIRTY_BLOCK_SIZE / 64 + 1)
+
+        self->size            = size
+        self->nextBaseAddress = 0x1000  // Protects against mapping null
+    }
+
+    // Fork an existing MMU
+    // We don't have clone so we do it manually,very slow
+    // will optimize in the future,when it becomes a practical bottleneck
+    fn Fork()->MMU{
+        MMU mmu
+        mmu.Init(self->size)
+
+        u64 ii = 0
+
+        while ii < self->size{
+            mmu.memory.Set(ii,self->memory.At(ii))
+            mmu.permissions.Set(ii,self->permissions.At(ii))
+
+            ii += 1
+        }
+
+        mmu.nextBaseAddress = self->nextBaseAddress
+
+        return mmu
+    }
+
+
+    fn Reset(MMU *mmu){
+        // Loop through the dirty blocks
+        u64 ii = 0
+
+        while ii < self->dirty.length{
+            // Get raw address from VirtualAddress
+            VirtualAddress block = self->dirty.At(ii)
+
+            VirtualAddress start = block
+            VirtualAddress end   = start + DIRTY_BLOCK_SIZE
+
+
+            memory::Memcpy(self->memory.data + start,mmu->memory.data + start,DIRTY_BLOCK_SIZE)
+            memory::Memcpy(self->permissions.data + start,mmu->permissions.data + start,DIRTY_BLOCK_SIZE)
+
+            u64 bitMapIndex = block / DIRTY_BLOCK_SIZE / 64
+
+            self->dirtyBitMap.Set(bitMapIndex,0)
+
+            ii += 1
+        }
+
+        // Clear the dirty list
+        self->dirty.Clear()
+    }
+
+    // Allocate a block of memory
+    // Permissions initially set to Raw,Write
+    // The memory allocated will be 16-byte Aligned
+    fn Allocate(u64 size)->result::Result{
+        // 16-byte align the allocation
+        u64 alignedSize = (size + 0x0f) & ~0x0f
+
+        // Get the Current Base Address
+        VirtualAddress base = self->nextBaseAddress
+
+        // Out Of Memory(OOM)
+        if base >= self->size{
+            return result::Result::Err("Out of Memory : Cannot allocate Memory")
+        }
+
+        // Update the next Allocation Base Address
+        if not utils::CheckedAddU64(&self->nextBaseAddress,self->nextBaseAddress,alignedSize){
+            return result::Result::Err("Overflow : size requested was too big")
+        }
+
+        // Checked if the Allocation causes an OOM and return an error if it does
+        if self->nextBaseAddress > self->size{
+            return result::Result::Err("Out of Memory : Cannot allocate Memory : Aligned")
+        }
+
+        // Mark the memory as unitialized and writable
+        self->SetPermissions(base,size,Permission::Raw | Permission::Write)
+
+        return result::Result::Ok(base)
+    }
+
+
+    // Apply permission to the region of memory starting at address and ending at
+    // address + size
+    fn SetPermissions(VirtualAddress address,u64 size,Permission permission)->result::Result{
+        VirtualAddress start = address
+        VirtualAddress end   = 0
+
+        if not utils::CheckedAddU64(&end,start,size){
+            return result::Result::Err("region being set permission on is out of bound(size)")
+        }
+
+        if end > self->size{
+            return result::Result::Err("region being set permission on is out of bound(end)")
+        }
+
+        u64 ii = start
+
+        while ii < end{
+            self->permissions.Set(ii,permission)
+            ii += 1
+        }
+
+        return result::Result::Ok(0)
+    }
+
+
+    fn PrintDirtied(){
+        u64 ii = 0
+
+        while ii < self->dirty.length{
+            printf("Dirty : VirtualAddress(0x%lx)\n",self->dirty.At(ii))
+            ii += 1
+        }
+    }
+
+    // Write the bytes from buffer into address 
+    fn WriteFrom(VirtualAddress address,str buffer,u64 size)->result::Result{
+        VirtualAddress start = address
+        VirtualAddress end   = 0
+
+
+        // Ensure the range is within bounds of memory and permissions array
+        if not utils::CheckedAddU64(&end,start,size){
+            return result::Result::Err("region being written too is out of bound(size)")
+        }
+
+        if end > self->size{
+            return result::Result::Err("region being written on is out of bound(end)")
+        }
+
+        // Permission Denied Check
+        u64 hasRaw = 0
+        u64 ii     = start
+
+        while ii < end{
+            Permission permission = self->permissions.At(ii)
+
+            if (permission & Permission::Raw) != 0{
+                hasRaw = 1
+            }
+
+            if (permission & Permission::Write) == 0{
+                return result::Result::Err("region being written to is not writtable")
+            }
+
+            ii += 1
+        }
+
+        // Copy data from buffer into memory
+        ii = start
+
+        while ii < end{
+            self->memory.Set(ii,buffer[ii - start])
+            ii += 1
+        }
+        
+        //const u64 DIRTY_BLOCK_SIZE = 4096
+
+        // Compute dirty/fit blocks
+        VirtualAddress blockStart = address / DIRTY_BLOCK_SIZE
+        VirtualAddress blockEnd   = (address + size) / DIRTY_BLOCK_SIZE
+
+        VirtualAddress block = blockStart
+
+        while block <= blockEnd{
+            // Determine the bitmap position of the dirty block
+            // index Determines which integer in the array contains our target block
+            // bit Determines the exat bit position (0 - 63) inside the u64
+            u64 index = block / 64
+            u64 bit   = block % 64
+
+            // Check if the block is not dirty
+            // This ensures that a block is only flagged the very first time it becomes dirty
+            // Preventing duplicate entries in the dirty list
+            if (self->dirtyBitMap.At(index) & (1 << bit)) == 0{
+                // Block is not dirty
+                // Add it to the dirty list
+                self->dirty.PushBack(block * DIRTY_BLOCK_SIZE)
+
+                // Update the dirty bitmap
+                // This marks the block as dirty so that subsequent writes to the exact
+                // same block will skip this if block entirely
+                self->dirtyBitMap.Set(index,self->dirtyBitMap.At(index) | (1 << bit))
+            }
+
+            block += 1
+        }
+
+
+        // Update Raw bits
+
+        if hasRaw{
+            ii = start
+
+            while ii < end{
+                if (self->permissions.At(ii) & Permission::Raw) != 0{
+                    // Mark Memory as readable
+                    self->permissions.Set(ii,self->permissions.At(ii) | Permission::Read)
+                }
+
+                ii += 1
+            }
+        }
+
+        return result::Result::Ok(0)
+    }
+
+
+    fn ReadInto(VirtualAddress address,str buffer,u64 size)->result::Result{
+        VirtualAddress start = address
+        VirtualAddress end   = 0
+
+        // Bounds check
+        if not utils::CheckedAddU64(&end,start,size){
+            return result::Result::Err("region being read from is out of bound(size)")
+        }
+
+        if end > self->size{
+            return result::Result::Err("region being read from is out of bound(end)")
+        }
+
+        // Permission check
+        u64 ii = start
+
+        while ii < end{
+            Permission permission = self->permissions.At(ii)
+
+            if (permission & Permission::Read) == 0{
+                return result::Result::Err("region being read from is not readable")
+            }
+
+            ii += 1
+        }
+
+        // Copy memory into buffer
+        ii = start
+
+        while ii < end{
+            buffer[ii - start] = self->memory.At(ii)
+
+            ii += 1
+        }
+
+        return result::Result::Ok(0)
+    }
+
+
+    fn ReadU8(VirtualAddress address)->u8{
+        u8 value = 0
+        self->ReadInto(address, &value as char *, 1)
+        return value
+    }
+
+
+    fn ReadI8(VirtualAddress address)->i8{
+        i8 value = 0
+        self->ReadInto(address, &value as char *, 1)
+        return value
+    }
+
+
+    fn ReadU16(VirtualAddress address)->u16{
+        u16 value = 0
+        self->ReadInto(address, &value as char *, 2)
+        return value
+    }
+
+
+    fn ReadI16(VirtualAddress address)->i16{
+        i16 value = 0
+        self->ReadInto(address, &value as char *, 2)
+        return value
+    }
+
+
+    fn ReadU32(VirtualAddress address)->u32{
+        u32 value = 0
+        self->ReadInto(address, &value as char *, 4)
+        return value
+    }
+
+
+
+    fn ReadI32(VirtualAddress address)->i32{
+        i32 value = 0
+        self->ReadInto(address, &value as char *, 4)
+        return value
+    }
+
+
+    fn ReadU64(VirtualAddress address)->u64{
+        u64 value = 0
+        self->ReadInto(address, &value as char *, 8)
+        return value
+    }
+
+
+
+    fn ReadI64(VirtualAddress address)->i64{
+        i64 value = 0
+        self->ReadInto(address, &value as char *, 8)
+        return value
+    }
+
+
+    fn WriteU8(VirtualAddress address,u8 value){
+        self->WriteFrom(address, &value as char *, 1)
+    }
+
+
+
+    fn WriteI8(VirtualAddress address,i8 value){
+        self->WriteFrom(address, &value as char *, 1)
+    }
+
+
+    fn WriteU16(VirtualAddress address,u16 value){
+        self->WriteFrom(address, &value as char *, 2)
+    }
+
+
+    fn WriteI16(VirtualAddress address,i16 value){
+        self->WriteFrom(address, &value as char *, 2)
+    }
+
+
+    fn WriteU32(VirtualAddress address,u32 value){
+        self->WriteFrom(address, &value as char *, 4)
+    }
+
+
+    fn WriteI32(VirtualAddress address,i32 value){
+        self->WriteFrom(address, &value as char *, 4)
+    }
+
+
+    fn WriteU64(VirtualAddress address,u64 value){
+        self->WriteFrom(address, &value as char *, 8)
+    }
+
+
+    fn WriteI64(VirtualAddress address,i64 value){
+        self->WriteFrom(address, &value as char *, 8)
+    }
+}
+ 
+
+

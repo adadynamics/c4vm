@@ -1,0 +1,577 @@
+
+
+foreign "C"{
+    fn printf(str fmt,...)->i32
+}
+
+
+enum Register{
+    Zero = 0  // Hard-wired Zero
+    ra   = 1  // Return Address
+    sp   = 2  // Stack Pointer
+    gp   = 3  // Global Pointer
+    tp   = 4  // Thread pointer
+    t0   = 5  // Temporary / ALternate Link Register
+   
+    // Temporaries
+    t1   = 6
+    t2   = 7
+    fp   = 8  // Saved Register/Frame Pointer(s0)
+    s1   = 9  // Saved Register
+
+    // Function Arguments/Return Values
+    a0   = 10
+    a1   = 11
+
+    // Function Arguments
+    a2   = 12
+    a3   = 13 
+    a4   = 14 
+    a5   = 15
+    a6   = 16
+    a7   = 17
+
+    // Saved Registers
+    s2   = 18
+    s3   = 19 
+    s4   = 20 
+    s5   = 21
+    s6   = 22
+    s7   = 23
+    s8   = 24
+    s9   = 25 
+    s10  = 26 
+    s11  = 27
+
+    // Temporaries
+    t3   = 28
+    t4   = 29
+    t5   = 30
+    t6   = 31
+
+    // Program Counter
+    pc   = 32
+}
+
+
+pub fn RegisterToString(Register register)->str{
+    if register == Register::Zero{
+        return "zero"
+    }
+    elif register == Register::ra{
+        return "ra"
+    }
+    elif register == Register::sp{
+        return "sp"
+    }
+    elif register == Register::gp{
+        return "gp"
+    }
+    elif register == Register::tp{
+        return "tp"
+    }
+    elif register == Register::t0{
+        return "t0"
+    }
+    elif register == Register::t1{
+        return "t1"
+    }
+    elif register == Register::t2{
+        return "t2"
+    }
+    elif register == Register::fp{
+        return "fp(s0)"
+    }
+    elif register == Register::s1{
+        return "s1"
+    }
+    elif register == Register::a0{
+        return "a0"
+    }
+    elif register == Register::a1{
+        return "a1"
+    }
+    elif register == Register::a2{
+        return "a2"
+    }
+    elif register == Register::a3{
+        return "a3"
+    }
+    elif register == Register::a4{
+        return "a4"
+    }
+    elif register == Register::a5{
+        return "a5"
+    }
+    elif register == Register::a6{
+        return "a6"
+    }
+    elif register == Register::a7{
+        return "a7"
+    }
+    elif register == Register::s2{
+        return "s2"
+    }
+    elif register == Register::s3{
+        return "s3"
+    }
+    elif register == Register::s4{
+        return "s4"
+    }
+    elif register == Register::s5{
+        return "s5"
+    }
+    elif register == Register::s6{
+        return "s6"
+    }
+    elif register == Register::s7{
+        return "s7"
+    }
+    elif register == Register::s8{
+        return "s8"
+    }
+    elif register == Register::s9{
+        return "s9"
+    }
+    elif register == Register::s10{
+        return "s10"
+    }
+    elif register == Register::s11{
+        return "s11"
+    }
+    elif register == Register::t3{
+        return "t3"
+    }
+    elif register == Register::t4{
+        return "t4"
+    }
+    elif register == Register::t5{
+        return "t5"
+    }
+    elif register == Register::t6{
+        return "t6"
+    }
+
+    return "unknown"
+}
+
+
+struct IType{
+    i32 opcode
+    i32 rd
+    i32 funct3
+    i32 rs1
+    i32 imm
+}
+
+impl IType{
+    fn Init(i32 value){
+        self->opcode = 0
+        self->rd = 0
+        self->funct3 = 0
+        self->rs1 = 0
+        self->imm = 0
+
+        self->opcode = (value >> 0) & 0x7f
+        self->rd     = (value >> 7) & 0x1f
+        self->funct3 = (value >> 12) & 0x07
+        self->rs1    = (value >> 15) & 0x1f
+
+        self->imm = value
+        self->imm = self->imm >> 20
+    }
+
+    fn GetRd()->str{
+        return RegisterToString(self->rd)
+    }
+
+
+
+    fn Decode(i32 value){
+        self->Init(value)
+
+        if self->opcode == 0b1100111{
+            if self->funct3 == 0b000{
+                printf("jalr found: imm[0:11] => %d\n", self->imm) 
+            }
+        }
+        elif self->opcode == 0b0000011{
+            if self->funct3 == 0b000{
+                printf("lb found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b001{
+                printf("lh found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b010{
+                printf("lw found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b100{
+                printf("lbu found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b101{
+                printf("lhu found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b110{
+                printf("lwu found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b011{
+                printf("ld found: imm[0:11] => %d\n", self->imm)
+            }
+        }
+        elif self->opcode == 0b0010011{
+            if self->funct3 == 0b000{
+                printf("addi found: imm[0:11] => %d\n", self->imm) 
+            }
+            elif self->funct3 == 0b001{
+                printf("slli found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b010{
+                printf("slti found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b011{
+                printf("sltiu found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b100{
+                printf("xori found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b110{
+                printf("ori found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b111{
+                printf("andi found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b101{
+                if ((self->imm >> 10) & 0x01){
+                    printf("srai found: imm[0:4] => %d\n", self->imm & 0x1f)
+                }
+                else{
+                    printf("srli found: imm[0:4] => %d\n", self->imm)
+                }
+            }
+        }
+        elif self->opcode == 0b0011011{
+            if self->funct3 == 0b000{
+                printf("addiw found: imm[0:11] => %d\n", self->imm) 
+            }
+            elif self->funct3 == 0b001{
+                printf("slliw found: imm[0:11] => %d\n", self->imm)
+            }
+            elif self->funct3 == 0b101{
+                if ((self->imm >> 10) & 0x01){
+                    printf("sraiw found: imm[0:4] => %d\n", self->imm & 0x1f)
+                }
+                else{
+                    printf("srliw found: imm[0:4] => %d\n", self->imm)
+                }
+            }
+        }
+    }
+}
+
+
+
+struct RType{
+    i32 opcode
+    i32 rd
+    i32 funct3
+    i32 rs1
+    i32 rs2
+    i32 funct7
+}
+
+impl RType{
+    fn Init(i32 value){
+        self->opcode = 0
+        self->rd     = 0
+        self->funct3 = 0
+        self->rs1    = 0
+        self->rs2    = 0
+        self->funct7 = 0
+
+        self->opcode = (value >> 0) & 0x7f
+        self->rd     = (value >> 7) & 0x1f
+        self->funct3 = (value >> 12) & 0x07
+        self->rs1    = (value >> 15) & 0x1f
+        self->rs2    = (value >> 20) & 0x1f
+        self->funct7 = (value >> 25) & 0x7f
+    }
+
+
+    fn GetRd()->str{
+        return RegisterToString(self->rd)
+    }
+
+    fn GetRs1()->str{
+        return RegisterToString(self->rs1)
+    }
+
+
+    fn GetRs2()->str{
+        return RegisterToString(self->rs2)
+    }
+
+
+    fn Decode(i32 value){
+        self->Init(value)
+
+        if self->opcode == 0b0110011{
+            if self->funct3 == 0b000{
+                if self->funct7 == 0b0000000{
+                    printf("add found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+                elif self->funct7 == 0b0100000{
+                    printf("sub found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+            }
+            elif self->funct3 == 0b001{
+                printf("sll found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b010{
+                printf("slt found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b011{
+                printf("sltu found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b100{
+                printf("xor found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b101{
+                if self->funct7 == 0b0000000{
+                    printf("srl found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+                elif self->funct7 == 0b0100000{
+                    printf("sra found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+            }
+            elif self->funct3 == 0b110{
+                printf("or found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b111{
+                printf("and found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+            }
+        }
+        elif self->opcode == 0b0111011{
+            if self->funct3 == 0b000{
+                if self->funct7 == 0b0000000{
+                    printf("addw found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+                elif self->funct7 == 0b0100000{
+                    printf("subw found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+            }
+            elif self->funct3 == 0b001{
+                printf("sllw found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b101{
+                if self->funct7 == 0b0000000{
+                    printf("srlw found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+                elif self->funct7 == 0b0100000{
+                    printf("sraw found: rd => %s : rs1 => %s : rs2 => %s\n", self->GetRd(), self->GetRs1(), self->GetRs2())
+                }
+            }
+        }
+    }
+}
+
+
+
+struct SType{
+    i32 opcode
+    i32 imm
+    i32 funct3
+    i32 rs1
+    i32 rs2
+}
+
+impl SType{
+    fn Init(i32 value){
+        self->opcode = 0
+        self->imm    = 0
+        self->funct3 = 0
+        self->rs1    = 0
+        self->rs2    = 0
+
+        self->opcode = (value >> 0) & 0x7f
+        self->imm    = (((value >> 7) & 0x1f) | (((value >> 25) & 0x7f) << 5)) as i32
+        self->imm    = (self->imm << 20) >> 20
+        self->funct3 = (value >> 12) & 0x07
+        self->rs1    = (value >> 15) & 0x1f
+        self->rs2    = (value >> 20) & 0x1f
+    }
+
+
+    fn GetImmediate()->i32{
+        return self->imm
+    }
+
+    fn GetRs1()->str{
+        return RegisterToString(self->rs1)
+    }
+
+    fn GetRs2()->str{
+        return RegisterToString(self->rs2)
+    }
+
+    fn Decode(i32 value){
+        self->Init(value)
+
+        if self->opcode == 0b0100011{
+            if self->funct3 == 0b000{
+                printf("sb found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b001{
+                printf("sh found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b010{
+                printf("sw found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b011{
+                printf("sd found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+        }
+    }
+}
+
+
+
+
+
+struct BType{
+    i32 opcode
+    i32 imm
+    i32 funct3
+    i32 rs1
+    i32 rs2
+}
+
+impl BType{
+    fn Init(i32 value){
+        self->opcode = 0
+        self->imm    = 0
+        self->funct3 = 0
+        self->rs1    = 0
+        self->rs2    = 0
+
+        self->opcode = (value >> 0) & 0x7f
+        self->imm    = (((value >> 31) & 0x1) << 12) | (((value >> 25) & 0x3f) << 5) | (((value >> 8)  & 0xf)  << 1)  | (((value >> 7)  & 0x1)  << 11)
+        self->imm    = (self->imm << 19) >> 19
+        self->funct3 = (value >> 12) & 0x07
+        self->rs1    = (value >> 15) & 0x1f
+        self->rs2    = (value >> 20) & 0x1f
+    }
+
+    fn GetImmediate()->i32{
+        return self->imm
+    }
+
+    fn GetRs1()->str{
+        return RegisterToString(self->rs1)
+    }
+
+    fn GetRs2()->str{
+        return RegisterToString(self->rs2)
+    }
+
+
+    fn Decode(i32 value){
+        self->Init(value)
+
+        if self->opcode == 0b1100011{
+            if self->funct3 == 0b000{
+                printf("beq found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b001{
+                printf("bne found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b100{
+                printf("blt found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b101{
+                printf("bge found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b110{
+                printf("bltu found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+            elif self->funct3 == 0b111{
+                printf("bgeu found: imm => %d : rs1 => %s : rs2 => %s\n", self->imm, self->GetRs1(), self->GetRs2())
+            }
+        }
+    }
+}
+
+
+
+struct UType{
+    i32 opcode
+    i32 rd
+    i32 imm
+}
+
+
+impl UType{
+    fn Init(i32 value){
+        self->opcode = 0
+        self->rd = 0
+        self->imm = 0
+
+        self->opcode = (value >> 0) & 0x7f
+        self->rd     = (value >> 7) & 0x1f
+        self->imm    = value
+        self->imm    = self->imm >> 12
+    }
+
+
+    fn GetRd()->str{
+        return RegisterToString(self->rd)
+    }
+
+
+    fn Decode(i32 value){
+        self->Init(value)
+
+        if self->opcode == 0b0110111{
+            printf("lui found: imm => %d : rd => %s\n", self->imm, self->GetRd())
+        }
+        elif self->opcode == 0b0010111{
+            printf("auipc found: imm => %d : rd => %s\n", self->imm, self->GetRd())
+        }
+    }
+}
+
+
+struct JType{
+    i32 opcode
+    i32 rd
+    i32 imm
+}
+
+
+impl JType{
+    fn Init(i32 value){
+        self->opcode = 0
+        self->rd = 0
+        self->imm = 0
+
+        self->opcode = (value >> 0) & 0x7f
+        self->rd     = (value >> 7) & 0x1f
+        self->imm    = (((value >> 31) & 0x1) << 20) | (((value >> 21) & 0x3ff) << 1) | (((value >> 20) & 0x1) << 11) | (((value >> 12) & 0xff)  << 12)
+        self->imm    = (self->imm << 11) >> 11
+    }
+
+
+    fn GetRd()->str{
+        return RegisterToString(self->rd)
+    }
+
+    fn Decode(i32 value){
+        self->Init(value)
+
+        if self->opcode == 0b1101111{
+            printf("jal found: imm => %d : rd => %s\n", self->imm, self->GetRd())
+        }
+    }
+}
+
+
+

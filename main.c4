@@ -1,0 +1,51 @@
+use std::fs as fs
+use std::string as string
+use std::libc::io as io
+use emulator as emu
+
+
+
+foreign "C"{
+    fn printf(str fmt,...)->i32
+    fn exit(i32 status)
+    fn malloc(u64 size)->void *
+}
+
+fn main(i32 argc,char **argv){
+    emu::Section section1
+    section1.Init(0x0000,0x10000,0x01a8,0x01a8,1)
+
+    emu::Section[1] sections
+
+    sections[0] = section1
+
+    emu::Emulator emulator
+    emulator.Init(32 * 1024 * 1024)
+    emulator.Load(argv[1],sections,1)
+
+    emulator.SetEntryPoint(0x10144)
+
+
+    //u64 base = emulator.Allocate(40)
+
+    //emulator.WriteFrom(base,"Hello World\n",13)
+
+    emu::Emulator emulator1 = emulator.Fork()
+
+    printf("Test Starts\n")
+
+    u64 ii = 0
+
+    while ii < 1{
+        emulator1.Reset(&emulator.mmu)
+        emulator1.Decode(section1.memorySize)
+        ii += 1
+    }
+
+
+    //io::Puts(fileContents.data)
+    printf("Emulator shutting down!\n")
+}
+
+
+

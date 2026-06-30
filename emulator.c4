@@ -1,0 +1,811 @@
+use isa as isa
+use mmu as mmu
+use std::result as result
+use std::vector as vector
+use std::string as string
+use std::fs as fs
+use std::libc::memory as memory
+
+
+
+foreign "C"{
+    fn printf(str fmt,...)->i32
+    fn exit(i32 status)
+    fn malloc(u64 size)->void *
+}
+
+fn Panic(str message){
+    printf("Panic :: %s\n",message)
+    exit(90)
+}
+
+struct Section{
+    u64 fileOffset
+    mmu::VirtualAddress virtualAddress
+    u64 fileSize
+    u64 memorySize
+    mmu::Permission permissions
+}
+
+impl Section{
+    fn Init(u64 fileOffset,mmu::VirtualAddress virtualAddress,u64 fileSize,u64 memorySize,mmu::Permission permissions){
+        self->fileOffset     = fileOffset
+        self->virtualAddress = virtualAddress
+        self->fileSize       = fileSize
+        self->memorySize     = memorySize
+        self->permissions    = permissions
+    }
+}
+
+sum VmExit{
+    Syscall(i32)
+}
+
+struct Emulator{
+    mmu::MMU mmu
+    isa::Register[33] registers
+}
+
+impl Emulator{
+    fn Init(u64 size){
+        self->mmu.Init(size)
+        memory::Memset(self->registers,0,sizeof(i32) * 32)
+    }
+
+    fn InitWithMMU(mmu::MMU mmu){
+        self->mmu = mmu
+        memory::Memset(self->registers,0,sizeof(i32) * 32)
+    }
+
+    fn Fork()->Emulator{
+        Emulator emulator
+        emulator.InitWithMMU(self->mmu.Fork())
+
+        return emulator
+    }
+
+    fn Reset(mmu::MMU *mmu){
+        self->mmu.Reset(mmu)
+    }
+
+    fn ReadRegister(isa::Register register)->u64{
+        if register != isa::Register::Zero{
+            return self->registers[register as u64] as u64
+        }
+
+        return 0
+    }
+
+
+    fn WriteRegister(isa::Register register,u64 value){
+        if register != isa::Register::Zero:
+            self->registers[register as u64] = value
+        }
+    }
+
+
+    fn Allocate(u64 size)->u64{
+        result::Result result
+
+        result = self->mmu.Allocate(size)
+
+        match result{
+            result::Result::Err(err){
+                Panic(err)
+            }
+            result::Result::Ok(ok){
+                return ok
+            }
+        }
+    }
+
+
+    fn PrintDirtied(){
+        self->mmu.PrintDirtied()
+    }
+
+
+    fn ReadInto(mmu::VirtualAddress address,str buffer,u64 size){
+        result::Result result
+
+        result = self->mmu.ReadInto(address,buffer,size)
+
+        match result{
+            result::Result::Err(err){
+                Panic(err)
+            }
+        }
+    }
+
+
+    fn WriteFrom(mmu::VirtualAddress address,str buffer,u64 size):
+        result::Result result
+
+        result = self->mmu.WriteFrom(address,buffer,size)
+
+        match result{
+            result::Result::Err(err){
+                Panic(err)
+            }
+        }
+    }
+
+    fn ReadU8(mmu::VirtualAddress addr)->u8{
+        return self->mmu.ReadU8(addr)
+    }
+
+    fn ReadI8(mmu::VirtualAddress addr)->i8{
+        return self->mmu.ReadI8(addr)
+    }
+
+
+    fn ReadU16(mmu::VirtualAddress addr)->u16{
+        return self->mmu.ReadU16(addr)
+    }
+
+
+    fn ReadI16(mmu::VirtualAddress addr)->i16{
+        return self->mmu.ReadI16(addr)
+    }
+
+
+    fn ReadU32(mmu::VirtualAddress addr)->u32{
+        return self->mmu.ReadU32(addr)
+    }
+
+
+    fn ReadI32(mmu::VirtualAddress addr)->i32{
+        return self->mmu.ReadI32(addr)
+    }
+
+
+    fn ReadU64(mmu::VirtualAddress addr)->u64{
+        return self->mmu.ReadU64(addr)
+    }
+
+
+    fn ReadI64(mmu::VirtualAddress addr)->i64{
+        return self->mmu.ReadI64(addr)
+    }
+
+
+
+    fn WriteU8(mmu::VirtualAddress addr,u8 value){
+        self->mmu.WriteU8(addr,value)
+    }
+
+    fn WriteI8(mmu::VirtualAddress addr,i8 value){
+        self->mmu.WriteI8(addr,value)
+    }
+
+
+    fn WriteU16(mmu::VirtualAddress addr,u16 value){
+        self->mmu.WriteU16(addr,value)
+    }
+
+
+    fn WriteI16(mmu::VirtualAddress addr,i16 value){
+        self->mmu.WriteI16(addr,value)
+    }
+
+
+    fn WriteU32(mmu::VirtualAddress addr,u32 value){
+        self->mmu.WriteU32(addr,value)
+    }
+
+
+    fn WriteI32(mmu::VirtualAddress addr,i32 value){
+        self->mmu.WriteI32(addr,value)
+    }
+
+
+    fn WriteU64(mmu::VirtualAddress addr,u64 value){
+        self->mmu.WriteU64(addr,value)
+    }
+
+    fn WriteI64(mmu::VirtualAddress addr,i64 value){
+        self->mmu.WriteI64(addr,value)
+    }
+
+
+    fn SetEntryPoint(mmu::VirtualAddress entry){
+        self->WriteRegister(isa::Register::pc,entry as u64)
+    }
+
+
+    fn Load(str fileName,Section *sections,u64 sectionLength){
+        string::String slice
+        Section section
+
+        // Read the binary executable
+        string::String fileContents = fs::Read(fileName)
+
+
+        u64 ii = 0
+
+        while ii < sectionLength{
+            section = sections[ii]
+
+            slice = fileContents.Slice(section.fileOffset,section.fileOffset + section.fileSize)
+
+            // Set memory(code section) to writable
+            self->mmu.SetPermissions(section.virtualAddress,section.memorySize,mmu::Permission::Write)
+
+            // Write the original file contents in
+            self->mmu.WriteFrom(section.virtualAddress,slice.data,slice.length)
+
+            // Zero out Padding
+            if section.memorySize > section.fileSize{
+                u64 paddingSize = section.memorySize - section.fileSize
+                u8 [paddingSize]padding
+                memory::Memset(padding,0,paddingSize)
+
+                self->mmu.WriteFrom(section.virtualAddress + section.fileSize,padding,paddingSize)
+            }
+
+            // Demote permissions to originals
+            self->mmu.SetPermissions(section.virtualAddress,section.memorySize,section.permissions)
+
+            // Update our allocator base to be beyond our loaded sections
+            // To do
+
+            ii += 1
+        }
+
+
+        printf("file size : %lu\n",fileContents.length)
+
+    }
+
+
+
+    fn Decode(u32 length){
+        isa::IType iType
+        isa::RType rType
+        isa::SType sType
+        isa::BType bType
+        isa::UType uType
+        isa::JType jType
+
+        u64 ii = 0x10144// + section.memorySize
+
+        while ii < 0x10000 + length{
+            i32 value = self->ReadI32(ii)
+
+            printf("0x%lx   |   0x%08x  |  ",ii,value)
+
+            iType.Decode(value)
+            rType.Decode(value)
+            sType.Decode(value)
+            bType.Decode(value)
+            uType.Decode(value)
+            jType.Decode(value)
+
+            ii += 4
+        }
+    }
+
+
+    fn Interpreter(){
+
+        while 1{
+            // Get the PC
+            mmu::VirtualAddress pc = self->ReadRegister(isa::Register::pc)
+
+            // Fetch the current instruction
+            i32 value  = self->ReadI32(pc)
+
+            // extract the opcode
+            i32 opcode = value & 0b1111111
+
+            // Decode and interpret the instructions
+            if (opcode == 0b0110011) or (opcode == 0b0111011){
+                // It's an RType
+                isa::RType instruction
+
+                // Decode and Build an RType
+                instruction.Init(value)
+
+                // Disassemble the instruction
+                instruction.Decode(value)
+
+                // Execute the instructions
+                if instruction.opcode == 0b0110011{
+                    u64 rs1 = self->ReadRegister(instruction.rs1)
+                    u64 rs2 = self->ReadRegister(instruction.rs2)
+
+                    if instruction.funct3 == 0b000{
+                        if instruction.funct7 == 0b0000000{
+                            // add
+                            u64 val = rs1 + rs2 // should be wrapping add
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                        elif instruction.funct7 == 0b0100000{
+                            // sub
+                            u64 val = rs1 - rs2 // should be wrapping sub
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                    }
+                    elif instruction.funct3 == 0b001{
+                        // sll
+                        u64 shamt = rs2 & 0b111111
+                        u64 val   = rs1 << shamt
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b010{
+                        // slt
+                        if (rs1 as i64) < (rs2 as i64){
+                            self->WriteRegister(instruction.rd,1)
+                        }
+                        else{
+                            self->WriteRegister(instruction.rd,0)
+                        }
+                    }
+                    elif instruction.funct3 == 0b011{
+                        // sltu
+                        if (rs1 as u64) < (rs2 as u64){
+                            self->WriteRegister(instruction.rd,1)
+                        }
+                        else{
+                            self->WriteRegister(instruction.rd,0)
+                        }
+                    }
+                    elif instruction.funct3 == 0b100{
+                        // xor
+                        u64 val// = rs1 ^ rs2
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b101{
+                        if instruction.funct7 == 0b0000000{
+                            // srl
+                            u64 shamt = rs2 & 0b111111
+                            u64 val   = rs1 >> shamt
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                        elif instruction.funct7 == 0b0100000{
+                            // sra
+                            u64 shamt = rs2 & 0b111111
+                            u64 val   = ((rs1 as i64) >> shamt) as u64
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                    }
+                    elif instruction.funct3 == 0b110{
+                        // or
+                        u64 val = rs1 | rs2
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b111{
+                        // and
+                        u64 val = rs1 & rs2
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                }
+                elif instruction.opcode == 0b0111011{
+                    u32 rs1 = self->ReadRegister(instruction.rs1) as u32
+                    u32 rs2 = self->ReadRegister(instruction.rs2) as u32
+                    if instruction.funct3 == 0b000{
+                        if instruction.funct7 == 0b0000000{
+                            // addw
+                            u64 val = (rs1 + rs2) as i32 as i64 as u64 // should be wrapping add
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                        elif instruction.funct7 == 0b0100000{
+                            // subw
+                            u64 val = (rs1 - rs2) as i32 as i64 as u64 // should be wrapping sub
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                    }
+                    elif instruction.funct3 == 0b001{
+                        // sllw
+                        u64 shamt = rs2 & 0b11111
+                        u64 val   = (rs1 << shamt) as i32 as i64 as u64
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b101{
+                        if instruction.funct7 == 0b0000000{
+                            // srlw
+                            u64 shamt = rs2 & 0b111111
+                            u64 val   = (rs1 >> shamt) as i32 as i64 as u64
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                        elif instruction.funct7 == 0b0100000{
+                            // sraw
+                            u64 shamt = rs2 & 0b111111
+                            u64 val   = ((rs1 as i32) >> shamt) as i64 as u64
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                    }
+                }
+            }
+            elif (opcode == 0b1100111) or (opcode == 0b0000011) or (opcode == 0b0010011) or (opcode == 0b0011011){
+                // It's an IType
+                isa::IType instruction
+
+                // Decode and Build an IType
+                instruction.Init(value)
+
+                // Disassemble the instruction
+                instruction.Decode(value)
+
+                // Execute the instructions
+                if instruction.opcode == 0b1100111{
+                    if instruction.funct3 == 0b000{
+                        // jalr
+                        u64 returnAddress = pc + 4 // should use wrapping add
+                        u64 targetAddress = (self->ReadRegister(instruction.rs1) + (instruction.imm as i64 as u64)) & ~1 // should use wrapping add
+
+                        self->WriteRegister(instruction.rd,returnAddress)
+                        self->WriteRegister(isa::Register::pc,targetAddress)
+                        continue
+                    }
+                }
+                elif instruction.opcode == 0b0000011{
+                    // Get the Base Address to load from
+                    mmu::VirtualAddress baseAddress = self->ReadRegister(instruction.rs1) + (instruction.imm as i64 as u64)
+
+                    if instruction.funct3 == 0b000{
+                        // lb
+
+                        // Read the Value from memory
+                        i8 tmp = self->ReadI8(baseAddress)
+
+                        // Write the loaded value into the destination register
+                        self->WriteRegister(instruction.rd,tmp as i64 as u64)
+                    }
+                    elif instruction.funct3 == 0b001{
+                        // lh
+
+                        // Read the Value from memory
+                        i16 tmp = self->ReadI16(baseAddress)
+
+                        // Write the loaded value into the destination register
+                        self->WriteRegister(instruction.rd,tmp as i64 as u64)
+                    }
+                    elif instruction.funct3 == 0b010{
+                        // lw
+
+                        // Read the Value from memory
+                        i32 tmp = self->ReadI32(baseAddress)
+
+                        // Write the loaded value into the destination register
+                        self->WriteRegister(instruction.rd,tmp as i64 as u64)
+                    }
+                    elif instruction.funct3 == 0b100{
+                        // lbu
+
+                        // Read the Value from memory
+                        u8 tmp = self->ReadU8(baseAddress)
+
+                        // Write the loaded value into the destination register
+                        self->WriteRegister(instruction.rd,tmp as u64)
+                    }
+                    elif instruction.funct3 == 0b101{
+                        // lhu
+
+                        // Read the Value from memory
+                        u16 tmp = self->ReadU16(baseAddress)
+
+                        // Write the loaded value into the destination register
+                        self->WriteRegister(instruction.rd,tmp as u64)
+                    }
+                    elif instruction.funct3 == 0b110{
+                        // lwu
+
+                        // Read the Value from memory
+                        u32 tmp = self->ReadU32(baseAddress)
+
+                        // Write the loaded value into the destination register
+                        self->WriteRegister(instruction.rd,tmp as u64)
+                    }
+                    elif instruction.funct3 == 0b011{
+                        // ld
+
+                        // Read the Value from memory
+                        i64 tmp = self->ReadI64(baseAddress)
+
+                        // Write the loaded value into the destination register
+                        self->WriteRegister(instruction.rd,tmp as i64 as u64)
+                    }
+                }
+                elif instruction.opcode == 0b0010011{
+                    u64 rs1 = self->ReadRegister(instruction.rs1)
+                    u64 imm = instruction.imm as i64 as u64
+
+                    if instruction.funct3 == 0b000{
+                        // addi
+                        u64 val = rs1 + imm // should be wrapping add
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b001{
+                        // slli
+
+                        u64 shamt = (instruction.imm & 0b111111) as u64
+                        u64 val   = rs1 << shamt
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b010{
+                        // slti
+                        if (rs1 as i64) < (imm as i64){
+                            self->WriteRegister(instruction.rd,1)
+                        }
+                        else{
+                            self->WriteRegister(instruction.rd,0)
+                        }
+                    }
+                    elif instruction.funct3 == 0b011{
+                        // sltiu
+                        if (rs1 as u64) < (imm as u64){
+                            self->WriteRegister(instruction.rd,1)
+                        }
+                        else{
+                            self->WriteRegister(instruction.rd,0)
+                        }
+                    }
+                    elif instruction.funct3 == 0b100{
+                        // xori
+                        u64 val// = rs1 ^ imm
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b110{
+                        // ori
+                        u64 val = rs1 | imm
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b111{
+                        // andi
+                        u64 val = rs1 & imm
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b101{
+                        if ((instruction.imm >> 10) & 0x01){
+                            // srai
+
+                            u64 shamt = (instruction.imm & 0b111111) as u64
+                            u64 val   = ((rs1 as i64) >> shamt) as u64
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                        else{
+                            // srli
+
+                            u64 shamt = (instruction.imm & 0b111111) as u64
+                            u64 val   = rs1 >> shamt
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                    }
+                }
+                elif instruction.opcode == 0b0011011{
+                    u32 rs1 = self->ReadRegister(instruction.rs1) as u32
+                    u32 imm = self->ReadRegister(instruction.imm) as u32
+
+                    if instruction.funct3 == 0b000{
+                        // addiw
+                        u64 val = (rs1 + imm) as i32 as i64 as u64 // should be wrapping add
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b001{
+                        // slliw
+                        u64 shamt = (instruction.imm & 0b11111) as u64
+                        u64 val   = (rs1 << shamt) as i32 as i64 as u64
+
+                        self->WriteRegister(instruction.rd,val)
+                    }
+                    elif instruction.funct3 == 0b101{
+                        if ((instruction.imm >> 10) & 0x01){
+                            // sraiw
+                            u64 shamt = (instruction.imm & 0b11111) as u64
+                            u64 val   = ((rs1 as i32) >> shamt) as i64 as u64
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                        else{
+                            // srliw
+                            u64 shamt = (instruction.imm & 0b11111) as u64
+                            u64 val   = (rs1 >> shamt) as i32 as i64 as u64
+
+                            self->WriteRegister(instruction.rd,val)
+                        }
+                    }
+                }
+            }
+            elif (opcode == 0b0100011){
+                // It's a SType
+                isa::SType instruction
+
+                // Decode and Build a SType
+                instruction.Init(value)
+
+                // Disassemble the instruction
+                instruction.Decode(value)
+
+                // Execute the instructions
+                if instruction.opcode == 0b0100011{
+                    // Get the Base Address to store to
+                    mmu::VirtualAddress baseAddress = self->ReadRegister(instruction.rs1) + (instruction.imm as i64 as u64)
+
+                    if instruction.funct3 == 0b000{
+                        // sb
+
+                        // Read the value from the source register
+                        u8 tmp = self->ReadRegister(instruction.rs2) as u8
+
+                        // Write the value read into the destination memory address
+                        self->WriteU8(baseAddress,tmp)
+                    }
+                    elif instruction.funct3 == 0b001{
+                        // sh
+
+                        // Read the value from the source register
+                        u16 tmp = self->ReadRegister(instruction.rs2) as u16
+
+                        // Write the value read into the destination memory address
+                        self->WriteU16(baseAddress,tmp)
+                    }
+                    elif instruction.funct3 == 0b010{
+                        // sw
+
+                        // Read the value from the source register
+                        u32 tmp = self->ReadRegister(instruction.rs2) as u32
+
+                        // Write the value read into the destination memory address
+                        self->WriteU32(baseAddress,tmp)
+                    }
+                    elif instruction.funct3 == 0b011{
+                        // sd
+
+                        // Read the value from the source register
+                        u64 tmp = self->ReadRegister(instruction.rs2) as u64
+
+                        // Write the value read into the destination memory address
+                        self->WriteU64(baseAddress,tmp)
+                    }
+                }
+            }
+            elif (opcode == 0b1100011){
+                // It's a BType
+                isa::BType instruction
+
+                // Decode and Build a BType
+                instruction.Init(value)
+
+                // Disassemble the instruction
+                instruction.Decode(value)
+
+                // Get the source registers to compare
+                u64 rs1 = self->ReadRegister(instruction.rs1)
+                u64 rs2 = self->ReadRegister(instruction.rs2)
+
+                // Execute the instructions
+                if instruction.opcode == 0b1100011{
+                    if instruction.funct3 == 0b000{
+                        // beq
+                        if rs1 == rs2{
+                           u64 targetAddress = pc + (instruction.imm as i64 as u64) // use wrapping add
+
+                           self->WriteRegister(isa::Register::pc,targetAddress)
+
+                           continue
+                        }
+                    }
+                    elif instruction.funct3 == 0b001{
+                        // bne
+                        if rs1 != rs2{
+                           u64 targetAddress = pc + (instruction.imm as i64 as u64) // use wrapping add
+
+                           self->WriteRegister(isa::Register::pc,targetAddress)
+
+                           continue
+                        }
+                    }
+                    elif instruction.funct3 == 0b100{
+                        // blt
+                        if (rs1 as i64) < (rs2 as i64){
+                           u64 targetAddress = pc + (instruction.imm as i64 as u64) // use wrapping add
+
+                           self->WriteRegister(isa::Register::pc,targetAddress)
+
+                           continue
+                        }
+                    }
+                    elif instruction.funct3 == 0b101{
+                        // bge
+                        if (rs1 as i64) >= (rs2 as i64){
+                           u64 targetAddress = pc + (instruction.imm as i64 as u64) // use wrapping add
+
+                           self->WriteRegister(isa::Register::pc,targetAddress)
+
+                           continue
+                        }
+                    }
+                    elif instruction.funct3 == 0b110{
+                        // bltu
+                        if rs1 < rs2{
+                           u64 targetAddress = pc + (instruction.imm as i64 as u64) // use wrapping add
+
+                           self->WriteRegister(isa::Register::pc,targetAddress)
+
+                           continue
+                        }
+                    }
+                    elif instruction.funct3 == 0b111{
+                        // bgeu
+                        if rs1 >= rs2{
+                           u64 targetAddress = pc + (instruction.imm as i64 as u64) // use wrapping add
+
+                           self->WriteRegister(isa::Register::pc,targetAddress)
+
+                           continue
+                        }
+                    }
+                }
+            }
+            elif (opcode == 0b0110111) or (opcode == 0b0010111){
+                // It's an UType
+                isa::UType instruction
+
+                // Decode and Build an UType
+                instruction.Init(value)
+
+                // Disassemble the instruction
+                instruction.Decode(value)
+
+                // Execute the instructions
+                if instruction.opcode == 0b0110111{
+                    // lui
+                    self->WriteRegister(instruction.rd,instruction.imm as i64 as u64)
+                }
+                elif instruction.opcode == 0b0010111{
+                    // auipc
+                    u64 offset = pc + (instruction.imm as i64 as u64) // should use wrapping add
+                    self->WriteRegister(instruction.rd,offset)
+                }
+            }
+            elif opcode == 0b1101111{
+                // It's a JType
+                isa::JType instruction
+
+                // Decode and Build a JType
+                instruction.Init(value)
+
+                // Disassemble the instruction
+                instruction.Decode(value)
+
+                // Execute the instructions
+                if instruction.opcode == 0b1101111{
+                    // jal
+                    u64 returnAddress = pc + 4 // should use wrapping add
+                    u64 targetAddress = pc + (instruction.imm as i64 as u64) // should use wrapping add
+
+                    self->WriteRegister(instruction.rd,returnAddress)
+                    self->WriteRegister(isa::Register::pc,targetAddress)
+
+                    continue
+                }
+            }
+        }
+    }
+}
+
+
+
+
